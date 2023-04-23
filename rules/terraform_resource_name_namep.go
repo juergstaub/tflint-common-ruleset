@@ -1,7 +1,8 @@
 package rules
 
 import (
-	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/terraform-linters/tflint-plugin-sdk/hclext"
@@ -11,11 +12,13 @@ import (
 // TerraformResourceNameRule checks whether ...
 type TerraformResourceNameRule struct {
 	tflint.DefaultRule
+	ResourceNameExpression regexp.Regexp
 }
 
 // TerraformResourceNameRule returns a new rule
 func NewTerraformResourceNameRule() *TerraformResourceNameRule {
-	return &TerraformResourceNameRule{}
+	return &TerraformResourceNameRule{
+		ResourceNameExpression: *regexp.MustCompile(`data\.namep_azure_name\..*\.result`)}
 }
 
 // Name returns the rule name
@@ -58,16 +61,14 @@ func (r *TerraformResourceNameRule) Check(runner tflint.Runner) error {
 		if len(attribute.Expr.Variables()) == 0 {
 			runner.EmitIssue(
 				r,
-				fmt.Sprintf(`Direct assignment of resources names is not allowed`),
+				`Direct assignment of resources names is not allowed`,
 				attribute.Expr.Range(),
 			)
 			continue
 		}
 
-		vars := attribute.Expr.Variables()[0]
-		expected := [...]string{"data", "namep_azure_name"}
 		actual := []string{}
-		for _, a := range vars {
+		for _, a := range attribute.Expr.Variables()[0] {
 			at, ok := a.(hcl.TraverseAttr)
 			if ok {
 				actual = append(actual, at.Name)
@@ -79,22 +80,10 @@ func (r *TerraformResourceNameRule) Check(runner tflint.Runner) error {
 			}
 		}
 
-		success := true
-		if len(actual) >= len(expected) {
-			for i := 0; i < len(expected); i++ {
-				if expected[i] != actual[i] {
-					success = false
-					break
-				}
-			}
-		} else {
-			success = false
-		}
-
-		if !success {
+		if !r.ResourceNameExpression.MatchString(strings.Join(actual, ".")) {
 			runner.EmitIssue(
 				r,
-				fmt.Sprintf(`Resource names must be assigned with namep`),
+				`Resource names must be assigned with namep`,
 				attribute.Expr.Range(),
 			)
 		}
